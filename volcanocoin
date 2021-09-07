@@ -1,0 +1,97 @@
+//SPDX-License-Identifier: UNLICENSED
+
+pragma solidity ^0.8.0;
+
+import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v4.3.1/contracts/access/Ownable.sol';
+import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v4.3.1/contracts/token/ERC20/ERC20.sol';
+import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/v4.3.1/contracts/utils/Strings.sol';
+
+contract OZVolcanoCoin is Ownable, ERC20("Name", "VCC"){
+    uint private _counter;
+    address _admin;
+    mapping(address => Payment[]) record;
+    
+    event logIncreaseTotalSupply(uint);
+    event logUpdatePayment(string);
+    event TransferEvent(string _label, address _address, uint _amount);
+    enum PaymentType{Unknown, Basic, Refund, Dividend, Group}
+    
+    constructor(address admin) {
+        _mint(owner(), 10000000000000000000000000);
+        _admin = admin;
+    }
+    
+    struct Payment{
+        uint id;
+        uint timestamp;
+        PaymentType paymentType;
+        string comment;
+        address recipient;
+        uint amount;
+    }
+    
+    modifier onlyAdmin(){
+        if(msg.sender == _admin){
+            _;
+        }
+    }
+    
+    function _increaseSupply() public {
+        _mint(owner(), totalSupply());
+        emit logIncreaseTotalSupply(totalSupply());
+    }
+    
+    function transfer(address recipient, uint256 amount) public virtual override returns (bool) {
+        _transfer(_msgSender(), recipient, amount);
+        Payment[] storage recordUser = record[_msgSender()];
+        recordUser.push(Payment({
+            id: _incrementCount(),
+            timestamp: block.timestamp,
+            paymentType: PaymentType.Unknown,
+            comment: '',
+            recipient: recipient,
+            amount: amount
+        }));
+        record[_msgSender()] = recordUser;
+        emit TransferEvent('Transfer Successful', recipient, amount);
+        return true;
+    }
+    
+    function getPayments() public view returns(Payment[] memory){
+        return record[_msgSender()];
+    }
+    
+    function updatePayment(uint id, PaymentType ptype, string memory comment) public {
+        require(id != 0, "Id invalid");
+        require(ptype >= PaymentType.Unknown && ptype <= PaymentType.Group, "Payment Type invalid");
+        require(bytes(comment).length != 0, "Comment invalid");
+        
+        Payment[] storage recordUser = record[_msgSender()];
+        for(uint i=0; i<recordUser.length; i++){
+            if(recordUser[i].id == id){
+                Payment storage payment = recordUser[i];
+                payment.paymentType = ptype;
+                payment.comment = comment;
+                break;
+            }
+        }
+    }
+    
+    function updatePayment(uint id, PaymentType ptype) public onlyAdmin {
+        require(id != 0, "Id invalid");
+        require(ptype >= PaymentType.Unknown && ptype <= PaymentType.Group, "Payment Type invalid");
+        //string calldata comment = "updated by ";
+        //string text = string(abi.encodePacked(comment, "updated by",Strings.toHexString(uint256(uint160(_admin)))));
+        string memory text = concatenate("updated by ", Strings.toHexString(uint256(uint160(_admin))));
+        emit logUpdatePayment(text);
+        updatePayment(id, ptype, text);
+    }
+    
+    function _incrementCount() internal returns(uint) { 
+        return ++_counter; 
+    }
+    
+    function concatenate(string memory s1, string memory s2) public pure returns (string memory) {
+        return string(abi.encodePacked(s1, " ", s2));
+    }
+}
